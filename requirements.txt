@@ -1,0 +1,6 @@
+fake-useragent
+selenium
+pandas
+beautifulsoup4
+pytz
+lxml
