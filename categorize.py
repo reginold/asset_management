@@ -20,6 +20,19 @@ def save_cache(cache):
     with open(CACHE_FILE, 'w', encoding='utf-8') as f:
         json.dump(cache, f, ensure_ascii=False, indent=2)
 
+def find_fuzzy_match(item_name, cache, threshold=85):
+    """Find similar items in cache using fuzzy matching"""
+    best_match = None
+    best_score = 0
+
+    for cached_item, category in cache.items():
+        score = fuzz.ratio(item_name, cached_item)
+        if score > best_score and score >= threshold:
+            best_score = score
+            best_match = (cached_item, category, score)
+
+    return best_match
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--file_name', type=str, required=True, help='Billing Excel file name (e.g., 202507.xlsx)')
 args = parser.parse_args()
@@ -61,21 +74,35 @@ for idx, row in df.iterrows():
     if pd.isna(row['Category']) or row['Category'] == '':
         item = row['Item']
 
-        # Step 1: Check cache first
+        # Step 1: Exact cache match
         if item in cache:
             suggested_category = cache[item]
-            print(f"\n✓ Found in cache: {item}")
+            print(f"\n✓ Exact match: {item}")
             print(f"Amount: {row['Amount']} JPY")
             print(f"Cached Category: {suggested_category}")
             confirm = input("Use cached? (y/n or enter new category): ").strip()
+
         else:
-            # Step 2: Use LLM if not in cache
-            suggested_category = categorize_item(item)
-            print(f"\n[NEW] Item: {item}")
-            print(f"Amount: {row['Amount']} JPY")
-            print(f"AI Suggested: {suggested_category}")
-            print(f"Date: {row['Date'].strftime('%Y-%m-%d')}")
-            confirm = input("Confirm? (y/n or enter custom category): ").strip()
+            # Step 2: Fuzzy match
+            fuzzy_result = find_fuzzy_match(item, cache)
+
+            if fuzzy_result:
+                matched_item, category, score = fuzzy_result
+                print(f"\n≈ Similar to: {matched_item} ({score}% match)")
+                print(f"Item: {item}")
+                print(f"Amount: {row['Amount']} JPY")
+                print(f"Suggested Category: {category}")
+                confirm = input("Use this? (y/n or enter custom category): ").strip()
+                suggested_category = category
+
+            else:
+                # Step 3: LLM if no match
+                suggested_category = categorize_item(item)
+                print(f"\n[NEW] Item: {item}")
+                print(f"Amount: {row['Amount']} JPY")
+                print(f"AI Suggested: {suggested_category}")
+                print(f"Date: {row['Date'].strftime('%Y-%m-%d')}")
+                confirm = input("Confirm? (y/n or enter custom category): ").strip()
 
         if confirm.lower() == 'y':
             df.at[idx, 'Category'] = suggested_category
